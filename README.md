@@ -8,10 +8,18 @@ The system uses [`bert-large-uncased-whole-word-masking-finetuned-squad`](https:
 
 Tested on: Ubuntu 18.04, with 1080Ti GPU. Docker version 19.03.5
 
-First clone the repo. Then, [download](https://drive.google.com/open?id=1kV1thNFPFCKGBEv6nKxUE0Dy7Vl2tG6N) the bert-large and bert-small models finetuned on Squad 2 to /data/models.
+First clone the repo. Then, [download](https://drive.google.com/open?id=1kV1thNFPFCKGBEv6nKxUE0Dy7Vl2tG6N) the bert-large and bert-small models finetuned on Squad 2 to /data/models. If you have trouble downloading the models (sometimes Google Drive hangs while trying to perform a virus scan on large binary files), browse into the individual models, download the three files - vocab.txt, config.json and pytorch_model.bin and then create the directories manually. So, for bert-base-uncased_finetuned_squad model, your directory structure should like this:
 
+```angular2
+/data/models/bert-base-uncased_finetuned_squad model
+   -vocab.txt
+   -pytorch_model.bin
+   -config.json
+```
+Similarly for bert-large-uncased-whole-word-masking-finetuned-squad
 Easiest way to run the demo is using Docker. Included Dockerfile will do the following:
 * Install Ubuntu 18.04 with CUDA 10.1
+* Install Python3.7 and Pip
 * Install Pytorch 1.4 with CUDA support 
 * Install other dependencies - Flask, Gunicorn, Transformers etc.
 * Copy parent directory to /app in Docker container (except the contents of the models directory, see .dockerignore). We'll map the models directory on the host to the container when we run the container.
@@ -22,6 +30,11 @@ Docker command:
 docker build -t covid-papers-analysis .
 ```
 
+## Running without GPU Support
+To run the docker container without GPU support:
+```angular2
+docker run -p 5000:5000 -v ~/dev/apps/ML/covid-papers-analysis/data/models:/app/data/models -e PYTHONUNBUFFERED=1 -it covid-papers-analysis:latest
+```
 ## GPU Support
 To enable GPU acceleration within the Docker container, follow these [instructions](https://github.com/NVIDIA/nvidia-docker). 
 
@@ -34,16 +47,12 @@ curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.li
 sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
 sudo systemctl restart docker
 ```
-To run the docker container without GPU support:
-```angular2
-docker run -p 5000:5000 -v ~/dev/apps/ML/covid-papers-analysis/data/models:/app/data/models -e PYTHONUNBUFFERED=1 --gpus device=0 -it covid-papers-analysis:latest
-```
 
-The `-v` option maps the model directory on the host to /app/data/models so you don't have to copy the model files into the container. 
+The `-v` option maps the model directory on the host to /app/data/models so you don't have to copy the model files into the container. Please change the models directory path to the correct path on your computer in the command above. 
 
 To run with GPU support, set the `USE_GPU` environment variable
 ```angular2
-docker run -p 5000:5000 -v ~/dev/apps/ML/covid-papers-analysis/data/models:/app/data/models -e USE_GPU=1 -e PYTHONUNBUFFERED=1 --gpus device=0 -it covid-papers-analysis:latest
+docker run -p 5000:5000 -v ~/dev/apps/ML/covid-papers-analysis/data/models:/app/data/models -e USE_GPU=1 -e PYTHONUNBUFFERED=1 --gpus all -it covid-papers-analysis:latest
 ```
 
 Once the container is running, open a browser and type: http://localhost:5000/main/
