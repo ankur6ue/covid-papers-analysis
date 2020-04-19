@@ -35,6 +35,8 @@ To run the docker container without GPU support:
 ```angular2
 docker run -p 5000:5000 -v ~/dev/apps/ML/covid-papers-analysis/data/models:/app/data/models -e PYTHONUNBUFFERED=1 -it covid-papers-analysis:latest
 ```
+The `-v` option maps the model directory on the host to /app/data/models so you don't have to copy the model files into the container. Please change the models directory path to the correct path on your computer in the command above. 
+
 ## GPU Support
 To enable GPU acceleration within the Docker container, follow these [instructions](https://github.com/NVIDIA/nvidia-docker). 
 
@@ -47,8 +49,6 @@ curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.li
 sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
 sudo systemctl restart docker
 ```
-
-The `-v` option maps the model directory on the host to /app/data/models so you don't have to copy the model files into the container. Please change the models directory path to the correct path on your computer in the command above. 
 
 To run with GPU support, set the `USE_GPU` environment variable
 ```angular2
