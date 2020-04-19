@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+
+<!doctype html>
+<html lang="en">
+<head>
+    <!-- Custom styles for this template -->
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='styles/dashboard.css') }}">
+    <title>Covid-19 Question-Answer Demo</title>
+
+</head>
+<body>
+<body>
+<nav class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0">
+    <a class="navbar-brand col-sm-3 col-md-2 mr-0" href="#">Ankur</a>
+    <input class="form-control form-control-dark w-100" type="text" id="query" placeholder="Query" aria-label="Query">
+    <ul class="navbar-nav px-3">
+        <li class="nav-item text-nowrap">
+            <button class="btn btn-primary" type="button" id="submitBtn">Submit</button>
+        </li>
+    </ul>
+</nav>
+
+<div class="container-fluid">
+    <div class="row">
+        <nav class="col-md-2 d-none d-md-block bg-light sidebar">
+            <div class="sidebar-sticky">
+                <ul class="nav flex-column">
+
+                    <div class="dropdown" id="modelsDropdownList">
+                        <button class="btn btn-secondary dropdown-toggle" type="button" id="models"
+                                data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            Models
+                            <span class="caret"></span>
+                        </button>
+                        <ul class="dropdown-menu models" role="menu" aria-labelledby="Models"></ul>
+                    </div>
+
+                    <hr class="mt-2 mb-2">
+                    <div class="dropdown" id="titlesDropdownList">
+                        <button class="btn btn-secondary dropdown-toggle" type="button" id="titles"
+                                data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            Titles
+                            <span class="caret"></span>
+                        </button>
+                        <ul class="dropdown-menu scrollable-menu titles" role="menu" aria-labelledby="Titles"></ul>
+                    </div>
+
+                    <hr class="mt-2 mb-2">
+
+                    <div class="form-group">
+                        <label for="log">log window</label>
+                        <textarea class="form-control rounded-0" id="log" rows="20"
+                                  style="overflow: hidden;"></textarea>
+                    </div>
+                </ul>
+            </div>
+        </nav>
+
+        <main role="main" class="col-md-8 ml-sm-auto col-lg-10 pt-3 px-4">
+            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+                <h1 class="h4">Abstract</h1>
+            </div>
+            <div class="form-group">
+                <textarea class="form-control rounded-0" id="document" rows="10" style="overflow-y: scroll;"></textarea>
+            </div>
+            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+                <h1 class="h4">Results</h1>
+            </div>
+            <div class="form-group">
+                <div class="results"></div>
+            </div>
+
+        </main>
+    </div>
+</div>
+
+<script src="{{ url_for('static',filename='styles/jquery/jquery-3.5.0.min.js') }}"></script>
+<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js"></script>
+<script src="{{ url_for('static',filename='styles/bootstrap-4.1.3/js/bootstrap.min.js') }}"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/feather-icons/4.9.0/feather.min.js"></script>
+<script src="{{ url_for('static',filename='js/client.js') }}"></script>
+<script src="{{ url_for('static',filename='js/events.js') }}"></script>
+<!-- Bootstrap core CSS -->
+<link rel="stylesheet" type="text/css"
+      href="{{ url_for('static',filename='styles/bootstrap-4.1.3/css/bootstrap.min.css') }}">
+<link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@2.8.0"></script>
+
+</body>
+</html>
