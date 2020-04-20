@@ -4,11 +4,17 @@
 
 The system uses [`bert-large-uncased-whole-word-masking-finetuned-squad`](https://huggingface.co/transformers/pretrained_models) and my own `bert-base-uncased-finetuned-squad` models to perform fast question-answering on documents in the Covid-19 dataset. Fast inference is achieved by tokenizing the document content during pre-processing and then adjusting the tok-to-orig indices based on the number of tokens in the query. This results in a 5x speed up over the default transformers implementation which performs tokenization for every query. 
 
+A couple of screenshots of the system frontend (query results are marked in yellow) are shown below. 
+
+![demo1](img/demo1.png)
+
+![demo2](img/demo2.png)
+
 ## Setup
 
 Tested on: Ubuntu 18.04, with 1080Ti GPU. Docker version 19.03.5
 
-First clone the repo. Then, [download](https://drive.google.com/open?id=1kV1thNFPFCKGBEv6nKxUE0Dy7Vl2tG6N) the bert-large and bert-small models finetuned on Squad 2 to /data/models. If you have trouble downloading the models (sometimes Google Drive hangs while trying to perform a virus scan on large binary files), browse into the individual models, download the three files - vocab.txt, config.json and pytorch_model.bin and then create the directories manually. So, for bert-base-uncased_finetuned_squad model, your directory structure should like this:
+First clone the repo. Then, [download](https://drive.google.com/open?id=1kV1thNFPFCKGBEv6nKxUE0Dy7Vl2tG6N) the bert-large and bert-small models finetuned on Squad 2 to /data/models. If you have trouble downloading the models (sometimes Google Drive hangs while trying to perform a virus scan on large binary files), browse into the individual model directories on Google drive, download vocab.txt, config.json and pytorch_model.bin, create the directories for the two models manually on your host machine and copy over vocab.txt, config.json and pytorch_model.bin to the respective model directories. For bert-base-uncased_finetuned_squad model, your directory structure should like this:
 
 ```angular2
 /data/models/bert-base-uncased_finetuned_squad model
@@ -16,7 +22,8 @@ First clone the repo. Then, [download](https://drive.google.com/open?id=1kV1thNF
    -pytorch_model.bin
    -config.json
 ```
-Similarly for bert-large-uncased-whole-word-masking-finetuned-squad
+Similarly for bert-large-uncased-whole-word-masking-finetuned-squad.
+
 Easiest way to run the demo is using Docker. Included Dockerfile will do the following:
 * Install Ubuntu 18.04 with CUDA 10.1
 * Install Python3.7 and Pip
