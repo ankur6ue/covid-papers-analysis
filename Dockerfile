@@ -60,4 +60,5 @@ RUN pip install transformers
 
 COPY / /app/
 WORKDIR /app/
-CMD ["gunicorn", "-b", "0.0.0.0:5000", "covid_papers_browser_app:application"]
+ENV FLASK_APP covid_papers_browser_app:application
+CMD ["flask", "run", "-h", "0.0.0.0", "-p", "5000"]
