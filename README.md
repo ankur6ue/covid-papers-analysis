@@ -40,7 +40,7 @@ docker build -t covid-papers-analysis .
 ## Running without GPU Support
 To run the docker container without GPU support:
 ```angular2
-docker run -p 5000:5000 -v ~/dev/apps/ML/covid-papers-analysis/data/models:/app/data/models -e PYTHONUNBUFFERED=1 -it covid-papers-analysis:latest
+docker run -p 5000:5000 -v ~/dev/apps/ML/covid-papers-analysis/data/models:/app/data/models -v ~/dev/apps/ML/covid-papers-analysis/logs:/app/logs -e PYTHONUNBUFFERED=1 -it covid-papers-analysis:latest
 ```
 The `-v` option maps the model directory on the host to /app/data/models so you don't have to copy the model files into the container. Please change the models directory path to the correct path on your computer in the command above. 
 
@@ -59,7 +59,7 @@ sudo systemctl restart docker
 
 To run with GPU support, set the `USE_GPU` environment variable
 ```angular2
-docker run -p 5000:5000 -v ~/dev/apps/ML/covid-papers-analysis/data/models:/app/data/models -e USE_GPU=1 -e PYTHONUNBUFFERED=1 --gpus all -it covid-papers-analysis:latest
+docker run -p 5000:5000 -v ~/dev/apps/ML/covid-papers-analysis/data/models:/app/data/models -v ~/dev/apps/ML/covid-papers-analysis/logs:/app/logs -e USE_GPU=1 -e PYTHONUNBUFFERED=1 --gpus all -it covid-papers-analysis:latest
 ```
 
 Once the container is running, open a browser and type: http://localhost:5000/main/
