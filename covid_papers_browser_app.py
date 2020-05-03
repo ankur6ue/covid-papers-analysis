@@ -2,75 +2,92 @@ from flask import render_template
 from flask import Flask
 from flask import jsonify
 from flask_cors import CORS
+from threading import Thread
 import torch
 from transformers import BertTokenizer
 from transformers import AutoConfig
 from transformers.modeling_bert import BertForQuestionAnswering
 import time
 import os
+import csv
 from src.covid_browser.fast_qa import pre_process, do_qa
-from src.covid_browser.utils import read_from_file
+from src.covid_browser.utils import read_from_file, get_data, read_json_file
 import logging
+# cord19q imports
+from src.cord19q.models import Models
+from src.cord19q.query import Query
 
 torch.set_grad_enabled(False)
 application = Flask(__name__)
+application.config["JSON_SORT_KEYS"] = False  # this keeps Flask from reordering the sort order of dictionary keys
+# during jsonfiy. Otherwise if you have a dict ordered by scores, Flask will serialize JSON objects in a way that the
+# keys are ordered. See https://github.com/pallets/flask/issues/974
 CORS(application)
 logging.basicConfig(filename='logs/log.txt', level=logging.INFO)
 logfile = logging.getLogger('file')
-use_cuda = False
+use_cuda = True
 if os.environ.get('USE_GPU'):
     use_cuda = True
     print('using CUDA')
+else:
+    use_cuda = True
 
 cache = {}
 dir_path = os.path.dirname(os.path.realpath(__file__))
 model_names_to_path = \
-    [
-        {'model_name': "bert-large-uncased-whole-word-masking-finetuned-squad",
-         'path': os.path.join(dir_path, 'data/models/bert-large-uncased-whole-word-masking-finetuned-squad')},
-        {'model_name': "bert-base-uncased_finetuned_squad",
-         'path': os.path.join(dir_path, 'data/models/bert-base-uncased_finetuned_squad')}
-    ]
+    {"bert-large-uncased-whole-word-masking-finetuned-squad":
+         os.path.join(dir_path, 'data/models/bert-large-uncased-whole-word-masking-finetuned-squad'),
+     "bert-base-uncased_finetuned_squad":
+         os.path.join(dir_path, 'data/models/bert-base-uncased_finetuned_squad'),
+     "cord19q": os.path.join(dir_path, 'data/cord19q')
+     }
+
 curr_model = None
+
+
+def threaded_task(model_name):
+    load_model_(model_name, 0)
+
+
+def load_model_(model_name, gpu_id=0):
+    """
+       Loads the model and associated tokenizer using the transformers library and adds the model to the cache
+       """
+    global curr_model
+    start = time.time()
+    # check if model has already been loaded
+    if not cache or model_name not in cache:
+        # if not already loaded, check if we have a path for this model
+        model_path = model_names_to_path.get(model_name)
+        if not model_path:
+            # we don't have a path to load the model artifacts, log error anr return
+            # HTTP Status Code automatically set to 200 and Content-Type header to application/json
+            logfile.info('path not found for model: {0}'.format(model_name))
+            return {'success': False, 'msg': 'model path not found'}
+        else:
+            logfile.info('found path for: {0}'.format(model_name))
+            try:
+                tokenizer = BertTokenizer(
+                    **{'vocab_file': os.path.join(model_path, 'vocab.txt'), 'max_len': 512, 'do_lower_case': True})
+                tokenizer.unique_added_tokens_encoder.update(set(tokenizer.all_special_tokens))
+                model = BertForQuestionAnswering.from_pretrained(pretrained_model_name_or_path=model_path)
+                # model.half() not implemented on CPUs!!
+                if use_cuda and torch.cuda.is_available():
+                    model = model.cuda(gpu_id)
+                cache.update({model_name: {'model': model, 'tokenizer': tokenizer}})
+                logfile.info('model: {0} successfully loaded'.format(model_name))
+            except:
+                logfile.info('Found path but error loading model: {0}'.format(model_name))
+                return {'success': False, 'msg': 'error loading model'}
+    else:  # we already have the model in the cache, just return
+        model = cache[model_name]
+    curr_model = model_name
+    return {'success': True, 'load_time': time.time() - start}
 
 
 @application.route('/load_model/<model_name>', methods=['POST', 'GET'])
 def load_model(model_name, gpu_id=0):
-    """
-    Loads the model and associated tokenizer using the transformers library and adds the model to the cache
-    """
-    global curr_model
-    start = time.time()
-    if not cache or model_name not in cache:
-        # look up path
-        model_path = None
-        for model in model_names_to_path:
-            if model['model_name'] == model_name:
-                logfile.info('found path for: {0}'.format(model_name))
-                model_path = model['path']
-                break
-
-        if model_path is None:
-            # HTTP Status Code automatically set to 200 and Content-Type header to application/json
-            logfile.info('path not found for model: {0}'.format(model_name))
-            return jsonify({'success': False, 'msg': 'model path not found'})
-        try:
-            tokenizer = BertTokenizer(
-                **{'vocab_file': os.path.join(model_path, 'vocab.txt'), 'max_len': 512, 'do_lower_case': True})
-            tokenizer.unique_added_tokens_encoder.update(set(tokenizer.all_special_tokens))
-            model = BertForQuestionAnswering.from_pretrained(pretrained_model_name_or_path=model_path)
-            # model.half() not implemented on CPUs!!
-            if use_cuda and torch.cuda.is_available():
-                model = model.cuda(gpu_id)
-            cache.update({model_name: {'model': model, 'tokenizer': tokenizer}})
-            logfile.info('model: {0} successfully loaded'.format(model_name))
-        except:
-            logfile.info('error loading model: {0}'.format(model_name))
-            return jsonify({'success': False, 'msg': 'error loading model'})
-    else:
-        model = cache[model_name]
-    curr_model = model_name
-    return jsonify({'success': True, 'load_time': time.time() - start})
+    return jsonify(load_model_(model_name, gpu_id))
 
 
 @application.route('/main/')
@@ -103,6 +120,7 @@ def get_abstract(doc_id):
     else:
         logfile.info('Error reading abstracts')
         return jsonify({'success': False, 'msg': 'error loading abstracts.csv'})
+
 
 @application.route('/get_titles/', methods=['POST', 'GET'])
 def get_titles():
@@ -171,6 +189,46 @@ def run(query):
     return jsonify({'success': False, 'msg': 'no answers found'})
 
 
+@application.route('/cord19q_lookup/<query>', methods=['POST'])
+def cord19q_lookup(query):
+    """
+    Uses the model to find the answer to the query in the currently active document.
+    """
+    query = query + '?'
+    start = time.time()
+    embeddings, db = Models.load(model_names_to_path['cord19q'])
+    bert_model = cache[curr_model]['model'] if curr_model in cache else None
+    bert_tokenizer = cache[curr_model]['tokenizer'] if curr_model in cache else None
+    articles = cache.get("articles")
+
+    cord19q_docs = Query.query2(embeddings, db, query, 10)
+    print('query time: {0}'.format(time.time() - start))
+    if cord19q_docs:
+        # load the corresponding doc
+        doc_info = {}
+        sentences_all = []
+        for k, v in cord19q_docs.items():
+            source = articles.get(k)  # load the info about the article referenced by the uid
+            if source:
+                path = os.path.join('/home/ankur/dev/apps/ML/Covid-19', source['subset'], source['subset'], k + '.json')
+                # read article text and create list of sentences
+                contents = read_json_file([path])
+                parsed_contents = get_data(contents)
+                sentences = parsed_contents[-1].get(k)
+                for s in sentences:
+                    sentences_all.append(s)
+                # update the doc with the content
+                doc_info.update({k: (sentences, source.get('title'), source.get("abstract"),
+                                     source.get('publish_time'), source.get('authors'),
+                                     source.get('journal'))})
+        # create spans
+        spans = pre_process(sentences_all, bert_tokenizer)
+        bert_answers = do_qa(spans, query, bert_tokenizer, bert_model)
+        logfile.info('successfully ran do_qa on query: {0}'.format(query))
+        return jsonify({'success': True, 'cordq_answers': cord19q_docs, 'bert_answers': bert_answers})
+    return jsonify({'success': False, 'msg': 'no answers found'})
+
+
 def make_docid2sentences_dict():
     file_path = os.path.join(dir_path, 'data/sentences.csv')
     sentences = read_from_file(file_path)
@@ -201,6 +259,25 @@ def make_docid2sentences_dict():
 
 
 if __name__ == '__main__':
+    articles = dict()
+    with open(os.path.join('/home/ankur/dev/apps/ML/covid-papers-analysis/data', "metadata.csv"),
+              mode="r") as csvfile:
+        csv_dict = csv.DictReader(csvfile)
+        for row in csv_dict:
+            articles.update({row['sha']: {'subset': row['full_text_file'],
+                                          "title": row["title"],
+                                          "abstract": row["abstract"],
+                                          "publish_time": row["publish_time"],
+                                          "authors": row["authors"],
+                                          "journal": row["journal"],
+                                          "url": row["url"]}})
+
+        cache.update({'articles': articles})
+    # load the bert models in a separate thread so we don't wait for the model to load
+    thread = Thread(target=threaded_task, args=('bert-base-uncased_finetuned_squad',))
+    thread.daemon = True
+    thread.start()
+    # load_model_('bert-base-uncased_finetuned_squad')
     # run with debug = False, so that Flask doesn't attempt to autoload when the static HTML content changes. That can
     # lead to the GPU memory not getting properly cleaned. Downside is that Flask server needs to be stopped and
     # restarted every time the template (main.html) is modified.
