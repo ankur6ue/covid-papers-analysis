@@ -30,7 +30,7 @@ if os.environ.get('USE_GPU'):
     use_cuda = True
     print('using CUDA')
 else:
-    use_cuda = True
+    use_cuda = False
 
 cache = {}
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -43,7 +43,6 @@ model_names_to_path = \
      }
 
 curr_model = None
-
 
 def threaded_task(model_name):
     load_model_(model_name, 0)
@@ -201,8 +200,8 @@ def cord19q_lookup(query):
     bert_tokenizer = cache[curr_model]['tokenizer'] if curr_model in cache else None
     articles = cache.get("articles")
 
-    cord19q_docs = Query.query2(embeddings, db, query, 10)
-    print('query time: {0}'.format(time.time() - start))
+    cord19q_docs = Query.query2(embeddings, db, query, 5)
+    print('Num docs found: {1}, query time: {0}'.format(time.time() - start, len(cord19q_docs)))
     if cord19q_docs:
         # load the corresponding doc
         doc_info = {}
@@ -210,7 +209,7 @@ def cord19q_lookup(query):
         for k, v in cord19q_docs.items():
             source = articles.get(k)  # load the info about the article referenced by the uid
             if source:
-                path = os.path.join('/home/ankur/dev/apps/ML/Covid-19', source['subset'], source['subset'], k + '.json')
+                path = os.path.join(dir_path, 'data', source['subset'], source['subset'], k + '.json')
                 # read article text and create list of sentences
                 contents = read_json_file([path])
                 parsed_contents = get_data(contents)
@@ -224,6 +223,7 @@ def cord19q_lookup(query):
         # create spans
         spans = pre_process(sentences_all, bert_tokenizer)
         bert_answers = do_qa(spans, query, bert_tokenizer, bert_model)
+        print('finished doing qa, bert_answers: {0}'.format(len(bert_answers)))
         logfile.info('successfully ran do_qa on query: {0}'.format(query))
         return jsonify({'success': True, 'cordq_answers': cord19q_docs, 'bert_answers': bert_answers})
     return jsonify({'success': False, 'msg': 'no answers found'})
@@ -259,8 +259,10 @@ def make_docid2sentences_dict():
 
 
 if __name__ == '__main__':
+    print("CUDA availability: {0}".format(torch.cuda.is_available()))
     articles = dict()
-    with open(os.path.join('/home/ankur/dev/apps/ML/covid-papers-analysis/data', "metadata.csv"),
+
+    with open(os.path.join(dir_path, 'data', "metadata.csv"),
               mode="r") as csvfile:
         csv_dict = csv.DictReader(csvfile)
         for row in csv_dict:
@@ -271,14 +273,20 @@ if __name__ == '__main__':
                                           "authors": row["authors"],
                                           "journal": row["journal"],
                                           "url": row["url"]}})
-
         cache.update({'articles': articles})
+        print('loaded articles')
     # load the bert models in a separate thread so we don't wait for the model to load
-    thread = Thread(target=threaded_task, args=('bert-base-uncased_finetuned_squad',))
+    if use_cuda and torch.cuda.is_available(): # use large bert model if cuda available, otherwise use small
+        thread = Thread(target=threaded_task, args=('bert-large-uncased-whole-word-masking-finetuned-squad',))
+        print('using large BERT model')
+    else:
+        thread = Thread(target=threaded_task, args=('bert-base-uncased_finetuned_squad',))
+        print('using small BERT model')
+
     thread.daemon = True
     thread.start()
     # load_model_('bert-base-uncased_finetuned_squad')
     # run with debug = False, so that Flask doesn't attempt to autoload when the static HTML content changes. That can
     # lead to the GPU memory not getting properly cleaned. Downside is that Flask server needs to be stopped and
     # restarted every time the template (main.html) is modified.
-    application.run(debug=False)
+    application.run(debug=False, host='0.0.0.0')

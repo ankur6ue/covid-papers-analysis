@@ -1,4 +1,10 @@
-gunicorn
 Flask
 Flask-cors
 numpy
+transformers
+gensim
+scikit-learn==0.22.1
+html2text
+mdv
+networkx
+nltk

@@ -1,1 +1,5 @@
-data/models
+data
+.git
+.cache
+logs
+*.xz

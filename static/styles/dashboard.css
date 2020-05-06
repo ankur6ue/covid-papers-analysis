@@ -21,6 +21,11 @@ body {
     overflow-y:auto
 }
 
+/* center text in bootstrap table */
+.table th {
+   text-align: center;
+}
+
 .tooltip-inner {
     max-width: 100% !important;
 }

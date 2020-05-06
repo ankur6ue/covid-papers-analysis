@@ -34,6 +34,7 @@ class Models(object):
 
         return path
 
+
     @staticmethod
     def modelPath(create=False):
         """
@@ -110,7 +111,6 @@ class Models(object):
         dbfile = os.path.join(path, "articles.sqlite")
 
         if os.path.isfile(os.path.join(path, "config")):
-            print("Loading model from %s" % path)
             embeddings = Embeddings()
             embeddings.load(path)
         else:

@@ -48,7 +48,7 @@ var Client = (function () {
                         // check if the property/key is defined in the object itself, not in parent
                         if (cordq_answers.hasOwnProperty(key)) {
                             let vals = cordq_answers[key]
-                            let score = vals[0][0][0]
+                            let score = vals[0][0][0].toFixed(2)
                             let answer = vals[0][0][1]
                             let title = vals[1]
                             let date = vals[2]

@@ -16,7 +16,9 @@ from sklearn.decomposition import TruncatedSVD
 
 # pylint: disable=E0611
 # Defined at runtime
-from .magnitude import Magnitude
+#from .magnitude import Magnitude
+#from pymagnitude import Magnitude
+from gensim.models import KeyedVectors
 from .scoring import Scoring
 
 # Multiprocessing helper methods
@@ -88,6 +90,7 @@ class Embeddings(object):
         # Word vector model
         self.vectors = self.loadVectors(self.config["path"]) if self.config else None
 
+
     def loadVectors(self, path):
         """
         Loads a word vector model at path.
@@ -98,13 +101,12 @@ class Embeddings(object):
         Returns:
             Magnitude vector model
         """
-
         # Require that vector path exists, if a path is provided and it's not found, Magnitude will try download from it's servers
         if not path or not os.path.isfile(path):
             raise IOError(ENOENT, "Vector model file not found", path)
-
         # Load magnitude model. If this is a training run (no embeddings yet), block until the vectors are fully loaded
-        return Magnitude(path, case_insensitive=True, blocking=True if not self.embeddings else False)
+        return KeyedVectors.load(path)
+        # return Magnitude(path, case_insensitive=True, blocking=False if not self.embeddings else False)
 
     def score(self, documents):
         """
@@ -253,7 +255,8 @@ class Embeddings(object):
             word vectors array
         """
 
-        return self.vectors.query(tokens)
+        #return self.vectors.query(tokens)
+        return self.vectors[tokens]
 
     def search(self, tokens, limit=3):
         """
@@ -269,11 +272,10 @@ class Embeddings(object):
 
         # Convert tokens to embedding vector
         embedding = self.transform((None, tokens, None))
-
         # Search embeddings index
         self.embeddings.nprobe = 6
-        results = self.embeddings.search(embedding.reshape(1, -1), limit)
-
+        #results = self.embeddings.search(embedding.reshape(1, -1), limit)
+        results = self.embeddings.search(np.float32(embedding.reshape(1, -1)), limit)
         # Map results to [(id, score)]
         return list(zip(results[1][0].tolist(), (results[0][0]).tolist()))
 
@@ -319,7 +321,6 @@ class Embeddings(object):
 
         # Sentence embeddings index
         self.embeddings = faiss.read_index("%s/embeddings" % path)
-
         with open("%s/lsa" % path, "rb") as handle:
             self.lsa = pickle.load(handle)
 
@@ -329,7 +330,8 @@ class Embeddings(object):
             self.scoring.load(path)
 
         # Word embeddings
-        self.vectors = self.loadVectors(self.config["path"])
+        #self.vectors = self.loadVectors(self.config["path"])
+        self.vectors = self.loadVectors("%s/cord19-300d.wv" % path)
 
     def save(self, path):
         """
