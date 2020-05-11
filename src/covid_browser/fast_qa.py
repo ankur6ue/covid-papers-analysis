@@ -2,7 +2,19 @@
 import torch
 import numpy as np
 from typing import Tuple
-
+import os
+import time
+import psutil
+import onnxruntime
+import random
+onnx = False
+if onnx:
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    sess_options = onnxruntime.SessionOptions()
+    sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+    sess_options.intra_op_num_threads = 1 ## psutil.cpu_count(logical=True)
+    ort_session = onnxruntime.InferenceSession(
+        dir_path + '/data/models/bert-base-uncased_finetuned_squad.onnx', sess_options)
 
 def decode(start: np.ndarray, end: np.ndarray, topk: int, max_answer_len: int) -> Tuple:
     """
@@ -102,13 +114,21 @@ def pre_process(sentences, tokenizer, max_query_length=64, max_seq_length=384):
 
 
 def do_qa(spans, query, tokenizer, model, device=-1, max_query_length=64, max_seq_length=384, topk=5,
-          max_answer_len=15):
+          max_answer_len=15, logfile=None):
     # tokenize query, truncate if length exceeds max_query_length
     truncated_query = tokenizer.encode(query, add_special_tokens=False, max_length=max_query_length)
     len_truncated_query = len(truncated_query)
     input_ids = torch.LongTensor().to(model.device)
     attention_mask = torch.LongTensor().to(model.device)
     token_type_ids = torch.LongTensor().to(model.device)
+    print("batch size: {0}".format(len(spans)))
+    if logfile:
+        logfile.info("batch size: {0}".format(len(spans)))
+    # randomly select 45 spans from the span list. This bounds max runtime and prevents potential out-of-memory
+    # errors, at the expense of potentially missing some promising spans.
+    if len(spans) > 45:
+        spans = random.sample(spans, 45)
+
     for span in spans:
         # we'll perform inference on each span
         span_tokens = span['all_span_tokens']
@@ -166,9 +186,25 @@ def do_qa(spans, query, tokenizer, model, device=-1, max_query_length=64, max_se
                                         model.device)), 0)
 
     fw_args = {"input_ids": input_ids, "attention_mask": attention_mask, "token_type_ids": token_type_ids}
-    with torch.no_grad():
-        start, end = model(**fw_args)
-    start, end = start.cpu().numpy(), end.cpu().numpy()
+    if onnx is False:
+        with torch.no_grad():
+            start_ = time.time()
+            start, end = model(**fw_args)
+            print('BERT execution time: {0}'.format(time.time() - start_))
+        start, end = start.cpu().numpy(), end.cpu().numpy()
+    else:
+        # start = time.time()
+        input_ids_numpy = input_ids.numpy()
+        attention_mask_numpy = attention_mask.numpy()
+        token_type_ids_numpy = token_type_ids.numpy()
+        # numpy conversion time is insignificant
+        # print('numpy conversion time: {0}'.format(time.time() - start))
+        ort_inputs = {ort_session.get_inputs()[0].name: input_ids_numpy,
+                      ort_session.get_inputs()[1].name: attention_mask_numpy,
+                      ort_session.get_inputs()[2].name: token_type_ids_numpy}
+        ort_outs = ort_session.run(["output_start_logits", "output_end_logits"], ort_inputs)
+        start = ort_outs[0]
+        end = ort_outs[1]
     scores = []
     for (feature, start_, end_) in zip(spans, start, end):
         # Normalize logits and spans to retrieve the answer

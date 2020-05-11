@@ -12,6 +12,8 @@ import mdv
 from .highlights import Highlights
 from .models import Models
 from .tokenizer import Tokenizer
+import os
+import sqlite3
 
 class Query(object):
     """
@@ -340,7 +342,7 @@ class Query(object):
             print()
 
     @staticmethod
-    def query2(embeddings, db, query, topn):
+    def query2(path, embeddings, query, topn):
         """
         Executes a query against the embeddings model. Similar to query, but returns a tuple of query outputs
 
@@ -353,7 +355,8 @@ class Query(object):
 
         # Default to 10 results if not specified
         topn = topn if topn else 10
-
+        dbfile = os.path.join(path, "articles.sqlite")
+        db = sqlite3.connect(dbfile)
         cur = db.cursor()
 
         # Query for best matches

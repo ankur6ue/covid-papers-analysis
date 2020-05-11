@@ -2,15 +2,11 @@ var Client = (function () {
     //Parameters
     let client = {}
     let document_ta = $("#document")[0] // ta is text area
-    let host_type = 'localhost'
+    const s = document.getElementById('covid-19');
+    let api_server = s.getAttribute('serv_addr')
     let log = $("#log")[0]
     log.value = ""
-    if (host_type == 'localhost') {
-        api_server = "http://127.0.0.1:5000" // must be just like this. using 0.0.0.0 for the IP doesn't work!
 
-    } else {
-        api_server = "https://telesens.co/face_det"
-    }
     client.models = [
         {
             "name": "bert-large-uncased-whole-word-masking-finetuned-squad",
@@ -30,12 +26,18 @@ var Client = (function () {
     // load text
     client.run = function (query) {
         console.log('in run')
+        if (query.length == 0 || query.length > 100){
+            log.value += '\n' + 'Query must be non-zero length and contain fewer than 100 alphanumeric characters'
+            return
+        }
+        // Disable submit button so users can't send repeated requests
+        $("#submitBtn").prop("disabled", true)
         let xhr = new XMLHttpRequest()
         xhr.open('POST', api_server + '/cord19q_lookup/' + query)
         let send_t = new Date().getTime()
         xhr.onload = function () {
             if (this.status === 200) {
-
+                $("#submitBtn").prop("disabled", false)
                 let results = JSON.parse(this.response)
                 if (results.success) {
                     cordq_answers = results.cordq_answers
@@ -52,7 +54,13 @@ var Client = (function () {
                             let answer = vals[0][0][1]
                             let title = vals[1]
                             let date = vals[2]
-                            table_data.push({id: key, answer: answer, score: score, title: title, date: date})
+                            let url = vals[4]
+                            if (url)
+                                table_data.push({answer: answer, score: score,
+                                    title: title, url: "<a href=" + url + ">" + title + "</a>"})
+                            else
+                                table_data.push({answer: answer, score: score,
+                                    title: title, url: "<a href=" + "#" + ">" + title + "</a>"})
                         }
                     }
                     // don't know why, but both appear to be needed
@@ -73,12 +81,12 @@ var Client = (function () {
                         }).appendTo($(".results"))
                     })
                 } else {
-                    log.value += '\n' + 'error processing query. Check if you have selected a model and document'
+                    log.value += '\n' + results.msg
                     client.update_scroll(log)
                 }
             }
         }
-        xhr.send();
+        xhr.send(); // appears to automatically strip alpha-numeric characters..
     }
 
     function load_model(name) {

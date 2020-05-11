@@ -11,7 +11,7 @@ from multiprocessing import Pool
 
 import faiss
 import numpy as np
-
+import time
 from sklearn.decomposition import TruncatedSVD
 
 # pylint: disable=E0611
@@ -105,7 +105,10 @@ class Embeddings(object):
         if not path or not os.path.isfile(path):
             raise IOError(ENOENT, "Vector model file not found", path)
         # Load magnitude model. If this is a training run (no embeddings yet), block until the vectors are fully loaded
-        return KeyedVectors.load(path)
+        start = time.time()
+        kv = KeyedVectors.load(path)
+        print("word embeddings loaded. Load time: {0}".format(time.time() - start))
+        return kv
         # return Magnitude(path, case_insensitive=True, blocking=False if not self.embeddings else False)
 
     def score(self, documents):

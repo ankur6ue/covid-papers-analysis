@@ -34,7 +34,9 @@ RUN make -C python
 # RUN make test
 RUN make install
 RUN make -C python install
-
+# needed for onnx
+RUN apt-get install libgomp1
+RUN pip install onnxruntime
 ## done with FAISS ##
 # do it here because pymagnitude takes a long time to install..
 FROM pytorch_1_5_faiss
