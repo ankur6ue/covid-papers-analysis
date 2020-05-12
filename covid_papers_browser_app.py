@@ -5,7 +5,6 @@ from flask_cors import CORS
 from threading import Thread
 import torch
 from transformers import BertTokenizer
-from transformers import AutoConfig
 from transformers.modeling_bert import BertForQuestionAnswering
 import time
 import os
@@ -152,12 +151,14 @@ def cord19q_lookup(query):
         bert_model = cache[curr_model]['model'] if curr_model in cache else None
         bert_tokenizer = cache[curr_model]['tokenizer'] if curr_model in cache else None
         articles = cache.get("articles")
-        cord19q_docs = Query.query2(model_names_to_path['cord19q'], embeddings, query, 5)
+        cord19q_docs = Query.query2(model_names_to_path['cord19q'], embeddings, query, 10)
         print('Num docs found: {1}, query time: {0}'.format(time.time() - start, len(cord19q_docs)))
         if cord19q_docs:
             # load the corresponding doc
             doc_info = {}
             sentences_all = []
+            topn_bert = 5
+            num = 0
             for k, v in cord19q_docs.items():
                 source = articles.get(k)  # load the info about the article referenced by the uid
                 if source:
@@ -173,19 +174,32 @@ def cord19q_lookup(query):
                     parsed_contents = get_data(contents)
                     sentences = parsed_contents[-1].get(k)
                     for s in sentences:
-                        sentences_all.append(s)
+                        # make sure sentence only contains ascii characters. Otherwise the BERT tokenizer can take
+                        # forever to tokenize
+                        en = all(ord(c) < 128 for c in s)
+                        if en:
+                            sentences_all.append(s)
                     # update the doc with the content
                     doc_info.update({k: (sentences, source.get('title'), source.get("abstract"),
                                          source.get('publish_time'), source.get('authors'),
                                          source.get('journal'))})
+                    # The idea is to only construct spans for the top 5 docs. We do this because running BERT model
+                    # is rather time consuming. TBD: In a multi-gpu setup, would be good to split up BERT inference
+                    # across multiple GPUs!
+                    num = num + 1
+                    if num > 5:
+                        break
             # create spans
+            # TBD: Parallelize this across multiple processes.
             spans = pre_process(sentences_all, bert_tokenizer)
             bert_answers = do_qa(spans, query, bert_tokenizer, bert_model, logfile)
             print('finished doing qa, bert_answers: {0}'.format(len(bert_answers)))
             logfile.info('successfully ran do_qa on query: {0}'.format(query))
             is_gpu_busy = False
             return jsonify({'success': True, 'cordq_answers': cord19q_docs, 'bert_answers': bert_answers})
-        return jsonify({'success': False, 'msg': 'no answers found'})
+        else:
+            is_gpu_busy = False
+            return jsonify({'success': False, 'msg': 'no answers found'})
     except Exception as e:
         logfile.info('Error running query:{0} Exception {1} '.format(query, e))
         print('Error running query:{0} Exception {1} '.format(query, e))
@@ -222,7 +236,7 @@ if __name__ == '__main__':
     Thread(target=threaded_task2).start()
     # for local debuggins without starting the web server
     time.sleep(5);
-    cord19q_lookup("where did the virus originate?")
+    cord19q_lookup("covid-19?")
     # load_model_('bert-base-uncased_finetuned_squad')
     # run with debug = False, so that Flask doesn't attempt to autoload when the static HTML content changes. That can
     # lead to the GPU memory not getting properly cleaned. Downside is that Flask server needs to be stopped and

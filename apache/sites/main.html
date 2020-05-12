@@ -8,7 +8,7 @@
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
           integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
-    <title>Covid-19 Question-Answer Demo</title>
+    <title>Covid-19 Research Dataset Search Engine</title>
 
 </head>
 <body>
@@ -40,18 +40,19 @@
         </nav>
 
         <main role="main" class="ml-sm-auto col-lg-10 pt-3 px-4">
-             <div class="w-100 d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom"
-                 style="overflow-y: scroll;">
+            <div class="w-100 d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
                 <table id="table"
-                       data-click-to-select="true"
-                       class="table table-striped table-hover table-bordered w-100"
-                       style="margin-bottom:0px">
+                       data-height="500"
+                       class="table table-striped table-hover table-bordered "
+                       style="margin-bottom:0px"
+                       style="margin-left:0px"
+                       style="margin-right:0px">
                     <thead class="thead-dark">
                     <tr>
                         <th data-field="answer">Answer</th>
                         <th data-field="score">Score</th>
                         <th data-field="title">Title</th>
-                        <th data-field="url">URL</th>
+                        <th data-field="date">Date</th>
                     </tr>
                     </thead>
                 </table>

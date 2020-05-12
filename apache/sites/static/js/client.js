@@ -57,10 +57,10 @@ var Client = (function () {
                             let url = vals[4]
                             if (url)
                                 table_data.push({answer: answer, score: score,
-                                    title: title, url: "<a href=" + url + ">" + title + "</a>"})
+                                    title: "<a href=" + url + ">" + title + "</a>", date: date})
                             else
                                 table_data.push({answer: answer, score: score,
-                                    title: title, url: "<a href=" + "#" + ">" + title + "</a>"})
+                                    title: title, date: date})
                         }
                     }
                     // don't know why, but both appear to be needed
