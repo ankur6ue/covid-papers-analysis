@@ -5,6 +5,9 @@ transformers
 gensim
 scikit-learn==0.22.1
 html2text
+lxml
 mdv
 networkx
 nltk
+marshmallow
+sqlalchemy

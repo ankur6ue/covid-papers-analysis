@@ -369,7 +369,7 @@ class Query(object):
                 [uid])
             article = cur.fetchone()
             curr_scores = documents[uid]
-            documents[uid] = (curr_scores, article[0], Query.date(article[1]), article[2])
+            documents[uid] = (curr_scores, article[0], Query.date(article[1]), article[-1])
 
         return documents
 

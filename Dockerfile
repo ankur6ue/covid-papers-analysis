@@ -48,5 +48,5 @@ RUN pip install -r /app/requirements.txt
 COPY / /app/
 WORKDIR /app/
 #ENV FLASK_APP covid_papers_browser_app:application
-ENTRYPOINT [ "python" ]
-CMD ["covid_papers_browser_app.py"]
+# ENTRYPOINT [ "python" ]
+CMD ["python", "covid_ir.py"]

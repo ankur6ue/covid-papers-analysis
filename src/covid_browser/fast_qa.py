@@ -4,9 +4,10 @@ import numpy as np
 from typing import Tuple
 import os
 import time
-import psutil
+from multiprocessing import Pool
 import onnxruntime
 import random
+import concurrent.futures
 onnx = False
 if onnx:
     dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -79,10 +80,21 @@ def pre_process(sentences, tokenizer, max_query_length=64, max_seq_length=384):
     curr_num_tokens = 0
     words = []
     i = 0
+    # sometimes the sentences contain very time consuming to tokenize words. Eg:
+    # sol1 := dsolve([diff(n1(t), t) = ((0.00567 + 0.1*10^(-5)*s1(t)*n1(t)) + s1(t)*n1(t))
+    # -0.1*10^(-5)*e1(t)*n1(t) -0.6*10^(-5)*i1(t)*n1(t) -0.17*10^(-5)*r1(t)*n1(t) -0.000095*u1(t)*s1(t)*n1(t),
+    # diff(i1(t), t) = ((0.0027*e1(t) -0.284046*i1(t) -0.00567*i1(t)/n1(t) -0.1*10^(-5)*i1(t)*s1(t)) -i1(t)*s1(t))
+    # and there is more..
+    # this one is triggered by the query: what is total number of covid cases are in usa?
+    # there is no way to consistently detect such pathological sentences. I'm resorting to a hack - if span creation
+    # takes longer than 2 seconds, then we return however many spans have been created.
+    start = time.time()
+    num_sentences_added_to_span = 0
     while i < num_sentences:
         sentence = sentences[i]
         i = i + 1
         words_ = sentence.split()  # split sentence into words
+        num_sentences_added_to_span = num_sentences_added_to_span + 1
         for (j, token) in enumerate(words_):
             sub_tokens = tokenizer.tokenize(token)  # split words into tokens (antimicrobial: anti, ##micro, ##bial)
             curr_num_tokens = curr_num_tokens + len(sub_tokens)  # maintain a count of number of tokens so far
@@ -108,26 +120,95 @@ def pre_process(sentences, tokenizer, max_query_length=64, max_seq_length=384):
                 curr_num_tokens = 0
                 words = []
                 # back up 1, because last sentence caused overflow and wasn't added in its entirety.
-                i = i - 1
+                # only back up 1, if we added more than one sentence to the span. Otherwise, we'll keep adding
+                # the same sentence over and over again..because this sentence when tokenized is too big to fit in the
+                # span.
+                if num_sentences_added_to_span > 1:
+                    i = i - 1
+                num_sentences_added_to_span = 0
+                if time.time() - start > 2:  # it's been more than 2 sec, just return existing spans
+                    return spans
                 break
     return spans
 
 
-def do_qa(spans, query, tokenizer, model, device=-1, max_query_length=64, max_seq_length=384, topk=5,
+def stream(models, fw_args, num_chunks):
+    input_ids = fw_args.get('input_ids')
+    attention_mask = fw_args.get('attention_mask')
+    token_type_ids = fw_args.get('token_type_ids')
+
+    input_ids_ = torch.chunk(input_ids, num_chunks, dim=0)
+    attention_mask_ = torch.chunk(attention_mask, num_chunks, dim=0)
+    token_type_ids_ = torch.chunk(token_type_ids, num_chunks, dim=0)
+
+    for model, token_ids, attention_mask, token_type_ids in zip(models, input_ids_, attention_mask_, token_type_ids_):
+        yield model, token_ids, attention_mask, token_type_ids
+
+
+def fwd_pass(params):
+    model, input_ids, attention_mask, token_type_ids = params
+    print(model.device)
+    with torch.no_grad():
+        fw_args = {"input_ids": input_ids.to(model.device), "attention_mask": attention_mask.to(model.device),
+                   "token_type_ids": token_type_ids.to(model.device)}
+        start, end = model(**fw_args)
+    start = start.cpu()
+    end = end.cpu()
+    return start, end
+
+
+def parallel_execute(models, fw_args):
+    num_chunks = len(models)
+    start = torch.FloatTensor()
+    end = torch.FloatTensor()
+    with Pool(os.cpu_count()) as pool:
+        for start_, end_ in pool.imap(fwd_pass, stream(models, fw_args, num_chunks)):
+            start = torch.cat((start, start_.cpu()), 0)
+            end = torch.cat((end, end_.cpu()), 0)
+    return start, end
+
+
+def parallel_execute2(models, fw_args):
+    num_chunks = len(models)
+    start = torch.FloatTensor()
+    end = torch.FloatTensor()
+
+    input_ids = fw_args.get('input_ids')
+    attention_mask = fw_args.get('attention_mask')
+    token_type_ids = fw_args.get('token_type_ids')
+
+    input_ids_ = torch.chunk(input_ids, num_chunks, dim=0)
+    attention_mask_ = torch.chunk(attention_mask, num_chunks, dim=0)
+    token_type_ids_ = torch.chunk(token_type_ids, num_chunks, dim=0)
+    futures = []
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for model, token_ids, attention_mask, token_type_ids in zip(models, input_ids_, attention_mask_, token_type_ids_):
+            futures.append(executor.submit(fwd_pass, (model, token_ids, attention_mask, token_type_ids)))
+
+        for future in futures:
+            start_, end_ = future.result()
+            start = torch.cat((start, start_.cpu()), 0)
+            end = torch.cat((end, end_.cpu()), 0)
+        return start, end
+
+
+def do_qa(spans, query, tokenizer, models, device=-1, max_query_length=64, max_seq_length=384, topk=5,
           max_answer_len=15, logfile=None):
+    # model = models[0]
     # tokenize query, truncate if length exceeds max_query_length
     truncated_query = tokenizer.encode(query, add_special_tokens=False, max_length=max_query_length)
     len_truncated_query = len(truncated_query)
-    input_ids = torch.LongTensor().to(model.device)
-    attention_mask = torch.LongTensor().to(model.device)
-    token_type_ids = torch.LongTensor().to(model.device)
+    input_ids = torch.LongTensor()
+    attention_mask = torch.LongTensor()
+    token_type_ids = torch.LongTensor()
     print("batch size: {0}".format(len(spans)))
     if logfile:
         logfile.info("batch size: {0}".format(len(spans)))
     # randomly select 45 spans from the span list. This bounds max runtime and prevents potential out-of-memory
     # errors, at the expense of potentially missing some promising spans.
-    if len(spans) > 45:
-        spans = random.sample(spans, 45)
+    num_spans = len(models)*50
+    if len(spans) > num_spans:
+        spans = random.sample(spans, num_spans)
 
     for span in spans:
         # we'll perform inference on each span
@@ -177,20 +258,29 @@ def do_qa(spans, query, tokenizer, model, device=-1, max_query_length=64, max_se
         span.update({"p_mask": p_mask.tolist()})
 
         input_ids = torch.cat(
-            (input_ids, torch.tensor(encoded_dict['input_ids'], dtype=torch.long).unsqueeze(0).to(model.device)), 0)
+            (input_ids, torch.tensor(encoded_dict['input_ids'], dtype=torch.long).unsqueeze(0)), 0)
         attention_mask = torch.cat((attention_mask,
-                                    torch.tensor(encoded_dict['attention_mask'], dtype=torch.long).unsqueeze(0).to(
-                                        model.device)), 0)
+                                    torch.tensor(encoded_dict['attention_mask'], dtype=torch.long).unsqueeze(0)), 0)
         token_type_ids = torch.cat((token_type_ids,
-                                    torch.tensor(encoded_dict['token_type_ids'], dtype=torch.long).unsqueeze(0).to(
-                                        model.device)), 0)
+                                    torch.tensor(encoded_dict['token_type_ids'], dtype=torch.long).unsqueeze(0)), 0)
+
+    # fw_args = {"input_ids": input_ids.to(model.device), "attention_mask": attention_mask.to(model.device),
+    #           "token_type_ids": token_type_ids.to(model.device)}
 
     fw_args = {"input_ids": input_ids, "attention_mask": attention_mask, "token_type_ids": token_type_ids}
     if onnx is False:
         with torch.no_grad():
-            start_ = time.time()
-            start, end = model(**fw_args)
-            print('BERT execution time: {0}'.format(time.time() - start_))
+            start_t = time.time()
+            num_chunks = len(models)
+            # only one chunk, execute directly.
+            if num_chunks == 1:
+                model = models[0]
+                start, end = fwd_pass((model, input_ids, attention_mask, token_type_ids))
+            else:
+                # attempt to parallelize fwd pass on multiple GPUs.
+                start, end = parallel_execute2(models, fw_args)
+
+            print('BERT execution time: {0}'.format(time.time() - start_t))
         start, end = start.cpu().numpy(), end.cpu().numpy()
     else:
         # start = time.time()
@@ -221,7 +311,7 @@ def do_qa(spans, query, tokenizer, model, device=-1, max_query_length=64, max_se
         # Mask CLS
         start_[0] = end_[0] = 0
         starts, ends, scores_ = decode(start_, end_, topk=1, max_answer_len=max_answer_len)
-        if scores_[0] > 0.05:
+        if scores_[0] > 0.0:
             scores.append({"starts": starts[0], "ends": ends[0], "scores": scores_[0], "feature": feature})
     # sort scores
     scores = sorted(scores, key=lambda x: -x['scores'])

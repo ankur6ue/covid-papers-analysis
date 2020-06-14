@@ -2,7 +2,10 @@
 
 import csv
 import json
+
 import os
+from os import path
+
 from gensim.summarization.textcleaner import get_sentences
 from gensim.parsing.preprocessing import preprocess_string
 from gensim.parsing.preprocessing import strip_tags, strip_punctuation, \
@@ -16,13 +19,6 @@ CUSTOM_FILTERS = [
 ]
 
 
-
-# checks if a query is non zero length, < 100 chars and only contains alphanumeric characters
-def is_proper(query):
-    if len(query) == 0 or len(query) > 100: return False
-    return all(x.isalnum() or x.isspace() or x is '-' or x is '?' for x in query)
-
-
 # for reading sentences. Returns list of words in a sentence
 def read_from_file(filename, delimiter='\t'):
     with open(filename, newline='') as f:
@@ -30,6 +26,7 @@ def read_from_file(filename, delimiter='\t'):
         data = list(reader)
         return data
     return None
+
 
 def clean_references_and_citations(item):
     cite_spans = item['cite_spans']
@@ -123,32 +120,24 @@ def clean_references_and_citations(item):
     ref_spans = item['ref_spans']
     text = item['text']
     for cite_span in cite_spans:
-        strip_text = cite_span['text']
+        strip_text = cite_span.get('text')
         # can't use string.strip, because it only strips characters at the beginning and end of a string!
-        text = text.replace(strip_text, '')
+        if strip_text:
+            text = text.replace(strip_text, '')
     for ref_span in ref_spans:
-        strip_text = ref_span['text']
+        strip_text = ref_span.get('text')
         # can't use string.strip, because it only strips characters at the beginning and end of a string!
-        text = text.replace(strip_text, '')
+        if strip_text:
+            text = text.replace(strip_text, '')
     return text
-
-
-def consolidate_text(blob):
-    # convert: "check out these cool references [1][2]" ->
-    # "check out these cool references
-    consolidated_text = ""
-    for item in blob:
-        consolidated_text = consolidated_text + clean_references_and_citations(item)
-
-    return consolidated_text
-
 
 def clean_text(blob):
     # convert: "check out these cool references [1][2]" ->
     # "check out these cool references
     paragraphs = []
-    for item in blob:
-        paragraphs.append(clean_references_and_citations(item))
+    if blob:
+        for item in blob:
+            paragraphs.append(clean_references_and_citations(item))
 
     return paragraphs
 
@@ -168,10 +157,10 @@ def get_data(articles):
     id2sentences = {}
     for article in articles:
         id = article['paper_id']
-        title = article['metadata']['title']
-        authors = article['metadata']['authors']
-        bodytext = clean_text(article['body_text'])
-        abstract = consolidate_text(article['abstract'])
+        title = article['metadata'].get('title')
+        authors = article['metadata'].get('authors')
+        bodytext = clean_text(article.get('body_text'))
+        abstract = clean_text(article.get('abstract'))
         sentences = []
         for para in bodytext:
             for sentence in get_sentences(para):
@@ -204,6 +193,27 @@ def read_json_file(files):
         with open(file) as json_data:
             data = json.load(json_data)
             contents.append(data)
+    return contents
+
+
+# Read the larger of the two json files
+def read_larger_json_file(files):
+    contents = []
+    max_size = 0
+    max_idx = 0
+    idx = 0
+    for file in files:
+        if path.exists(file):
+            stat = os.stat(file)
+            if stat.st_size > max_size:
+                max_size = stat.st_size
+                max_idx = idx
+        idx = idx + 1
+    if max_size == 0:
+        return None  # No files found
+    with open(files[max_idx]) as json_data:
+        data = json.load(json_data)
+        contents.append(data)
     return contents
 
 '''

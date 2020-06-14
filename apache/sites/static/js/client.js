@@ -26,19 +26,18 @@ var Client = (function () {
     // load text
     client.run = function (query) {
         console.log('in run')
-        if (query.length == 0 || query.length > 100){
-            log.value += '\n' + 'Query must be non-zero length and contain fewer than 100 alphanumeric characters'
-            return
-        }
+
         // Disable submit button so users can't send repeated requests
         $("#submitBtn").prop("disabled", true)
         let xhr = new XMLHttpRequest()
-        xhr.open('POST', api_server + '/cord19q_lookup/' + query)
+        xhr.open('POST', 'cord19q_lookup/' + query)
+        // Only accept JSON styles response back
+        xhr.setRequestHeader('Accept', 'application/JSON');
         let send_t = new Date().getTime()
         xhr.onload = function () {
+            $("#submitBtn").prop("disabled", false)
+            let results = JSON.parse(this.response)
             if (this.status === 200) {
-                $("#submitBtn").prop("disabled", false)
-                let results = JSON.parse(this.response)
                 if (results.success) {
                     cordq_answers = results.cordq_answers
                     let recv_t = new Date().getTime()
@@ -54,7 +53,7 @@ var Client = (function () {
                             let answer = vals[0][0][1]
                             let title = vals[1]
                             let date = vals[2]
-                            let url = vals[4]
+                            let url = vals[3]
                             if (url)
                                 table_data.push({answer: answer, score: score,
                                     title: "<a href=" + url + ">" + title + "</a>", date: date})
@@ -66,6 +65,11 @@ var Client = (function () {
                     // don't know why, but both appear to be needed
                     $table.bootstrapTable('load', table_data)
                     $table.bootstrapTable({data: table_data})
+
+                    // Now deal with the excerpts (answer spans)
+                    // First make the excerpt div visible
+                    $("#Excerpts").addClass("visible")
+                    $("#Excerpts").removeClass("invisible")
                     bert_answers = results.bert_answers
                     $(".resultItem").remove();
                     bert_answers.forEach((answer_, index) => {
@@ -77,111 +81,49 @@ var Client = (function () {
                         text_ = text_.replace(answer, "<span style=\"background-color: #FFFF00\">" + answer + "</span>")
                         $('<p>', {
                             class: 'resultItem',
-                            html: '<h6>' + '<b>' + "result " + num + '</b>' + '</h6>' + '<p>' + text_ + '</p>'
+                            html: '<h6>' + '<b>' + "excerpt " + num + '</b>' + '</h6>' + '<p>' + text_ + '</p>'
                         }).appendTo($(".results"))
                     })
                 } else {
                     log.value += '\n' + results.msg
                     client.update_scroll(log)
                 }
+            } else {
+                log.value += '\n' + results.msg
+                client.update_scroll(log)
             }
+
         }
         xhr.send(); // appears to automatically strip alpha-numeric characters..
     }
 
-    function load_model(name) {
-        console.log('loading model..')
+    function get_stats() {
         let xhr = new XMLHttpRequest()
-        xhr.open('POST', api_server + '/load_model/' + name)
-        let send_t = new Date().getTime()
-        xhr.onload = function () {
-            if (this.status === 200) {
-                let recv_t = new Date().getTime()
-                let result = JSON.parse(this.response)
-                if (result.success) {
-                    client.active_model_name = name
-                    log.value += '\n' + 'active model: ' + name + '\n' + 'load time (ms): ' + (recv_t - send_t).toFixed(0)
-                    client.update_scroll(log)
-                } else {
-                    log.value += '\n' + 'error loading model'
-                    client.update_scroll(log)
-                }
-            }
-        }
-        xhr.send();
-    }
-
-    function populate_models_dropdown(models) {
-        let dropdown = $(".dropdown-menu.models");
-        $(".dropdown-menu.models").empty();
-        let _this = this
-        for (let i = 0; i < models.length; i++) {
-            list_item = "<li class='list-item ModelsDropDownListItem' data-name='" + models[i].name +
-                "' data-path=" + models[i].path + ">"
-                + "<a role='menuitem'  href='#'>" + models[i].short_name + "</a>" + "</li>"
-            dropdown.append(list_item);
-        }
-        $('.ModelsDropDownListItem').click(function (e) {
-            let target = e.currentTarget;
-            let name = target.getAttribute("data-name")
-            let path = target.getAttribute("data-path")
-            load_model(name)
-            // $('#activeModel')[0].value = name;
-        });
-    }
-
-    function load_abstract(id) {
-        let xhr = new XMLHttpRequest()
-        xhr.open('POST', api_server + '/get_abstract/' + id)
+        xhr.open('GET', 'stats')
+        xhr.setRequestHeader('Accept', 'application/JSON');
         xhr.onload = function () {
             if (this.status === 200) {
                 let result = JSON.parse(this.response)
                 if (result.success) {
-                    document_ta.value = result.context
-                }
-            }
-        }
-        xhr.send();
-    }
-
-    function populate_titles_dropdown() {
-        let dropdown = $(".dropdown-menu.scrollable-menu.titles");
-        dropdown.empty();
-        let _this = this
-        let xhr = new XMLHttpRequest()
-        xhr.open('POST', api_server + '/get_titles/')
-        xhr.onload = function () {
-            if (this.status === 200) {
-                let result = JSON.parse(this.response)
-                if (result.success) {
-                    titles = result.titles
-                    titles.forEach((title_, index) => {
-
-                        list_item = "<li class='dropdown-item titlesDropDownListItem' data-name=" + title_[0] +
-                            " data-id=" + title_[0] +
-                            " data-toggle=tooltip data-placement=right title=" + "\"" + title_[1] + "\"" + ">"
-                            + "<a role='menuitem'  href='#'>" + title_[1] + "</a>" + "</li>"
-
-                        dropdown.append(list_item)
-                        separator = "<div class='dropdown-divider'></div>"
-                        dropdown.append(separator)
-
-                    })
-
-                    $('.titlesDropDownListItem').click(function (e) {
-                        let target = e.currentTarget;
-                        let doc_id = target.getAttribute("data-id")
-                        load_abstract(doc_id)
-                    });
-
+                    num_sentences = result.num_sentences
+                    num_articles = result.num_articles
+                     $('<p>' +
+                        "This demo uses a combination of Natural Language Processing and AI techniques to find best \
+                         matching sentences and excerpts for a \
+                        user query from a dataset of " + num_articles + ' research papers containing ' + num_sentences +
+                        ' sentences about Covid-19 and other infectious \
+                        diseases. Try searching for "how is covid-19 transmitted?" or "what are the major risk factors for \
+                        covid-19?"' +
+                        '</p>'
+                        ).appendTo($(".intro-text"))
                 }
             }
         }
         xhr.send();
 
     }
-
     // populate_models_dropdown(client.models)
     // populate_titles_dropdown()
+    get_stats()
     return client
 }());
