@@ -204,10 +204,11 @@ def read_larger_json_file(files):
     idx = 0
     for file in files:
         if path.exists(file):
-            stat = os.stat(file)
-            if stat.st_size > max_size:
-                max_size = stat.st_size
-                max_idx = idx
+            if os.path.isfile(file):
+                stat = os.stat(file)
+                if stat.st_size > max_size:
+                    max_size = stat.st_size
+                    max_idx = idx
         idx = idx + 1
     if max_size == 0:
         return None  # No files found

@@ -145,18 +145,6 @@ def stream(models, fw_args, num_chunks):
         yield model, token_ids, attention_mask, token_type_ids
 
 
-def fwd_pass(params):
-    model, input_ids, attention_mask, token_type_ids = params
-    print(model.device)
-    with torch.no_grad():
-        fw_args = {"input_ids": input_ids.to(model.device), "attention_mask": attention_mask.to(model.device),
-                   "token_type_ids": token_type_ids.to(model.device)}
-        start, end = model(**fw_args)
-    start = start.cpu()
-    end = end.cpu()
-    return start, end
-
-
 def parallel_execute(models, fw_args):
     num_chunks = len(models)
     start = torch.FloatTensor()
@@ -168,7 +156,24 @@ def parallel_execute(models, fw_args):
     return start, end
 
 
+def fwd_pass(params):
+    # This will be called in parallel for each GPU
+    model, input_ids, attention_mask, token_type_ids = params
+    print(model.device)
+    # using no_grad is very important - this way Pytorch doesn't allocate space for gradients, reducing the
+    # chances of getting Cuda OOM errors
+    with torch.no_grad():
+        # send the input arguments to the correct GPU.
+        fw_args = {"input_ids": input_ids.to(model.device), "attention_mask": attention_mask.to(model.device),
+                   "token_type_ids": token_type_ids.to(model.device)}
+        start, end = model(**fw_args)
+    start = start.cpu()
+    end = end.cpu()
+    return start, end
+
+
 def parallel_execute2(models, fw_args):
+    # num_chunks corresponds to the number of GPUs. We already sent a model replica to each GPU
     num_chunks = len(models)
     start = torch.FloatTensor()
     end = torch.FloatTensor()
@@ -177,6 +182,7 @@ def parallel_execute2(models, fw_args):
     attention_mask = fw_args.get('attention_mask')
     token_type_ids = fw_args.get('token_type_ids')
 
+    # split along batch dimension
     input_ids_ = torch.chunk(input_ids, num_chunks, dim=0)
     attention_mask_ = torch.chunk(attention_mask, num_chunks, dim=0)
     token_type_ids_ = torch.chunk(token_type_ids, num_chunks, dim=0)
@@ -184,7 +190,7 @@ def parallel_execute2(models, fw_args):
     with concurrent.futures.ThreadPoolExecutor() as executor:
         for model, token_ids, attention_mask, token_type_ids in zip(models, input_ids_, attention_mask_, token_type_ids_):
             futures.append(executor.submit(fwd_pass, (model, token_ids, attention_mask, token_type_ids)))
-
+        # collect results
         for future in futures:
             start_, end_ = future.result()
             start = torch.cat((start, start_.cpu()), 0)
