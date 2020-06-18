@@ -48,7 +48,7 @@ Run *kube/ctnr_mgmt.sh*
 
 Open a browser and go to *localhost:8082/covid-demo/main.html*. You should see the application frontend and be able to type queries and get search results.
 
-##How it works
+## How it works
 
 The core search functionality is implemented in *covid_browser/api_impl.py* and exposed via the *cord19q_lookup* (terrible name, I know..) endpoint, implemented in *src/covid_browser/modelapi.py*. 
  
@@ -83,7 +83,7 @@ sudo systemctl restart docker
 
 To run with GPU support, set the `USE_GPU` environment variable to 1. See *run_application_server kube/ctnr_mgmt.sh()
 
-## Application Frontend
+## Application frontend
 The application frontend is implemented in */apache* and served by an Apache server running as a docker container. See *run_apache_proxy_server* in *kube/ctnr_mgmt.sh* for how to run *docker build* and *docker run* commands. The *ctnr_mgmt.sh* script runs two Apache servers on ports 8000 and 8082. For local deployment, you only need the Apache server running on port 8082. This server serves HTML/js content located in *apache/dev/static* and proxies the traffic at endpoints */cord19q_lookup*, */healthcheck* and */stats* (see *apache/dev/covid-demo.conf*) to the application server. Note that the IP address of the docker bridge (172.17.0.1) is used in the proxy settings. If you are running the application server directly (eg. in a Python IDE, or using the command line) then this should be replaced by the localhost address (127.0.0.1)
 
 Once the application and Apache server containers are running, open a browser and type:http://localhost:8082/covid-demo/main.html. You should see the application frontend (see screenshot above).
